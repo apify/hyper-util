@@ -28,15 +28,23 @@ enum Headers {
     Extra(HeaderMap),
 }
 
+/// Errors that can occur when establishing a proxy tunnel.
 #[derive(Debug)]
 pub enum TunnelError {
+    /// Failed to create the underlying connection.
     ConnectFailed(Box<dyn StdError + Send + Sync>),
+    /// An I/O error occurred while establishing the tunnel.
     Io(std::io::Error),
+    /// The destination host is missing.
     MissingHost,
+    /// Proxy authentication is required (HTTP 407).
     ProxyAuthRequired,
+    /// The proxy response headers were too long.
     ProxyHeadersTooLong,
+    /// Unexpected end of file while reading the tunnel response.
     TunnelUnexpectedEof,
-    TunnelUnsuccessful,
+    /// The tunnel was unsuccessful, optionally with an HTTP status code.
+    TunnelUnsuccessful(Option<u16>),
 }
 
 pin_project! {
@@ -225,7 +233,11 @@ where
         } else if recvd.starts_with(b"HTTP/1.1 407") {
             return Err(TunnelError::ProxyAuthRequired);
         } else {
-            return Err(TunnelError::TunnelUnsuccessful);
+            let status_code = recvd
+                .get(9..12)
+                .and_then(|s| std::str::from_utf8(s).ok())
+                .and_then(|s| s.parse::<u16>().ok());
+            return Err(TunnelError::TunnelUnsuccessful(status_code));
         }
     }
 }
@@ -239,7 +251,10 @@ impl std::fmt::Display for TunnelError {
             TunnelError::ProxyAuthRequired => "proxy authorization required",
             TunnelError::ProxyHeadersTooLong => "proxy response headers too long",
             TunnelError::TunnelUnexpectedEof => "unexpected end of file",
-            TunnelError::TunnelUnsuccessful => "unsuccessful",
+            TunnelError::TunnelUnsuccessful(Some(status)) => {
+                return write!(f, "unsuccessful tunnel (status {})", status);
+            }
+            TunnelError::TunnelUnsuccessful(None) => "unsuccessful tunnel",
             TunnelError::ConnectFailed(_) => "failed to create underlying connection",
             TunnelError::Io(_) => "io error establishing tunnel",
         })
