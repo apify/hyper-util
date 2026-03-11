@@ -1,0 +1,10 @@
+version: "1"
+rules:
+  - base: master
+    upstream: hyperium:master
+    assignees:
+      - barjin
+    reviewers:
+      - barjin
+    conflictReviewers:
+      - barjin
